@@ -495,3 +495,10 @@ def index():
     if index_file.exists():
         return FileResponse(index_file)
     return {"message": "请将 index.html 放到 static 目录，或访问 /api/search?q=关键词"}
+
+
+# 直接运行 python main.py 时，从环境变量 PORT 读取端口（Railway/Render 等会注入）
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
