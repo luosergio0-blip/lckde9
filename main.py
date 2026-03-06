@@ -134,16 +134,17 @@ def ensure_images_dir():
                 pass
         print("已清空图片目录，将重新下载。")
 
-    def _flatten_if_single_subdir(target: Path) -> None:
-        """若解压后只有一层子目录，把子目录里的文件移到 target 根目录，方便与 DB 里的 /static/images/xxx 对应。"""
+    def _flatten_subdirs(target: Path) -> None:
+        """把 target 下所有子目录里的文件移到 target 根目录，方便与 DB 里的 /static/images/xxx 对应。"""
         try:
-            items = list(target.iterdir())
-            if len(items) != 1 or not items[0].is_dir():
-                return
-            subdir = items[0]
-            for f in subdir.iterdir():
-                shutil.move(str(f), str(target / f.name))
-            subdir.rmdir()
+            for item in list(target.iterdir()):
+                if item.is_dir():
+                    for f in item.iterdir():
+                        dest = target / f.name
+                        if dest.exists():
+                            dest.unlink()
+                        shutil.move(str(f), str(dest))
+                    item.rmdir()
         except Exception:
             pass
 
@@ -155,7 +156,7 @@ def ensure_images_dir():
                 shutil.copyfileobj(resp, f)
             with zipfile.ZipFile(tmp_zip, "r") as zf:
                 zf.extractall(images_dir)
-            _flatten_if_single_subdir(images_dir)
+            _flatten_subdirs(images_dir)
             print(f"  解压完成: {images_dir}")
         except Exception as e:
             print(f"  下载或解压失败，跳过此包: {e}")
