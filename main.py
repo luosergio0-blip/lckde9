@@ -4,6 +4,7 @@ FastAPI 后端：搜索、详情、添加新内容、按关键字导出 Excel、
 import io
 import os
 import shutil
+import threading
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -170,8 +171,16 @@ def ensure_images_dir():
 @app.on_event("startup")
 def startup():
     ensure_db_file()
-    ensure_images_dir()
     init_db()
+    # 图片 zip 体积大，在后台线程下载，避免阻塞启动导致 502
+    def _download_images():
+        try:
+            ensure_images_dir()
+        except Exception as e:
+            print(f"后台下载图片异常: {e}")
+    t = threading.Thread(target=_download_images, daemon=True)
+    t.start()
+    print("图片将在后台下载，网站先正常对外服务。")
 
 
 # ---------- API ----------
