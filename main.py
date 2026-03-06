@@ -5,6 +5,7 @@ import io
 import os
 import shutil
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import config
@@ -95,9 +96,81 @@ def ensure_db_file():
         print(f"下载数据库失败，将使用空数据库: {e}")
 
 
+def ensure_images_dir():
+    """
+    若图片目录为空且配置了 IMAGES_ZIP_URL，则下载 zip 并解压到 IMAGES_DIR。
+    支持多个压缩包：IMAGES_ZIP_URL 里用英文逗号分隔多个链接，会按顺序下载并解压到同一目录。
+    若设置 FORCE_IMAGES_DOWNLOAD=1，则即使目录已有内容也会重新下载解压（用于修复错误结构）。
+    """
+    images_dir = Path(config.IMAGES_DIR)
+    force = os.environ.get("FORCE_IMAGES_DOWNLOAD", "").strip() in ("1", "true", "yes")
+    if not force:
+        try:
+            if any(images_dir.iterdir()):
+                return
+        except FileNotFoundError:
+            pass
+
+    raw = getattr(config, "IMAGES_ZIP_URL", "") or os.environ.get("IMAGES_ZIP_URL", "")
+    if not raw:
+        print("未设置 IMAGES_ZIP_URL，将不自动下载图片。")
+        return
+
+    # 支持多个 URL：逗号或换行分隔
+    urls = [u.strip() for u in raw.replace("\n", ",").split(",") if u.strip()]
+    if not urls:
+        return
+
+    images_dir.mkdir(parents=True, exist_ok=True)
+    if force:
+        for f in images_dir.iterdir():
+            try:
+                if f.is_file():
+                    f.unlink()
+                else:
+                    shutil.rmtree(f)
+            except Exception:
+                pass
+        print("已清空图片目录，将重新下载。")
+
+    def _flatten_if_single_subdir(target: Path) -> None:
+        """若解压后只有一层子目录，把子目录里的文件移到 target 根目录，方便与 DB 里的 /static/images/xxx 对应。"""
+        try:
+            items = list(target.iterdir())
+            if len(items) != 1 or not items[0].is_dir():
+                return
+            subdir = items[0]
+            for f in subdir.iterdir():
+                shutil.move(str(f), str(target / f.name))
+            subdir.rmdir()
+        except Exception:
+            pass
+
+    for i, url in enumerate(urls):
+        tmp_zip = images_dir.parent / f"images_tmp_{i}.zip"
+        try:
+            print(f"正在从远端下载图片压缩包 ({i+1}/{len(urls)}): {url[:80]}...")
+            with urllib.request.urlopen(url) as resp, open(tmp_zip, "wb") as f:
+                shutil.copyfileobj(resp, f)
+            with zipfile.ZipFile(tmp_zip, "r") as zf:
+                zf.extractall(images_dir)
+            _flatten_if_single_subdir(images_dir)
+            print(f"  解压完成: {images_dir}")
+        except Exception as e:
+            print(f"  下载或解压失败，跳过此包: {e}")
+        finally:
+            try:
+                if tmp_zip.exists():
+                    tmp_zip.unlink()
+            except Exception:
+                pass
+    print("图片压缩包处理完成。")
+
+
 @app.on_event("startup")
 def startup():
     ensure_db_file()
+    ensure_images_dir()
     init_db()
 
 
