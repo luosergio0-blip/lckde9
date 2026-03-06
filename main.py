@@ -290,6 +290,25 @@ def api_row(row_id: int):
         conn.close()
 
 
+@app.get("/api/row/{row_id:int}/images-status")
+def api_row_images_status(row_id: int):
+    """诊断：返回该行在 DB 中的图片路径及对应文件是否存在于 IMAGES_DIR。"""
+    conn = get_connection()
+    try:
+        row = get_row_by_id(conn, row_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="未找到该行")
+        out = []
+        for im in row.get("images") or []:
+            path_val = (im.get("path") or "").replace("\\", "/").strip()
+            fname = path_val.split("/")[-1] if path_val else ""
+            exists = (config.IMAGES_DIR / fname).is_file() if fname else False
+            out.append({"path": path_val, "filename": fname, "exists_on_disk": exists})
+        return {"row_id": row_id, "images": out}
+    finally:
+        conn.close()
+
+
 @app.post("/api/row")
 def api_add_row(body: AddRowRequest):
     """添加一行新内容。"""

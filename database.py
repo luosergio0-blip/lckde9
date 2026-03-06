@@ -356,7 +356,11 @@ def get_row_by_id(conn, row_id: int) -> Optional[dict]:
     if not r:
         return None
     cur2 = conn.execute("SELECT id, col_ref, image_path, alt_text FROM images WHERE row_id = ?", (row_id,))
-    images = [{"id": i[0], "col_ref": i[1], "path": i[2], "alt": i[3]} for i in cur2.fetchall()]
+    # 路径统一为 / 开头、正斜杠，避免前端请求 URL 异常
+    images = [{"id": i[0], "col_ref": i[1], "path": (i[2] or "").replace("\\", "/").strip() or "/", "alt": i[3]} for i in cur2.fetchall()]
+    for im in images:
+        if im["path"] and not im["path"].startswith("/"):
+            im["path"] = "/" + im["path"]
     return {
         "id": r[0],
         "sheet_name": r[1],
